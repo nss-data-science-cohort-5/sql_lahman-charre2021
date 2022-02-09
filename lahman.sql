@@ -40,26 +40,32 @@ Do you see any trends? (Hint: For this question, you might find it helpful to lo
 (https://www.postgresql.org/docs/9.1/functions-srf.html). If you want to see an example of this in action, check out this DataCamp video: 
 https://campus.datacamp.com/courses/exploratory-data-analysis-in-sql/summarizing-and-aggregating-numeric-data?ex=6) */
 
---Check this one again.
-
 WITH bins AS (
   SELECT generate_series(1920, 2010, 10) AS lower,
 		 generate_series(1930, 2020, 10) AS upper
+),
+hr_so_by_year AS (
+	SELECT
+		yearid,
+		SUM(so) AS total_year_so,
+		SUM(hr) AS total_year_hr,
+		MAX(g) * COUNT(teamid) AS total_year_games
+	FROM teams
+	GROUP BY yearid
+	ORDER BY yearid
 )
 SELECT
 	lower,
 	upper,
-	ROUND(AVG(so),2) AS average_strikeouts_per_game,
-	ROUND(AVG(hr),2) AS average_homeruns_per_game
+	ROUND(SUM(total_year_so)/SUM(total_year_games)::numeric,2) AS average_strikeouts_per_game,
+	ROUND(SUM(total_year_hr)/SUM(total_year_games)::numeric,2) AS average_homeruns_per_game
 FROM bins
-LEFT JOIN batting
+LEFT JOIN hr_so_by_year
 ON yearid >= lower
 AND yearid < upper
 GROUP BY lower, upper
 ORDER BY lower;
---Both have been relatively steady since the 60's, with slight increases in both recently.
-
---Check this one again.
+--Steady increases for both.
 
 /* 4. Find the player who had the most success stealing bases in 2016, where success is measured as the percentage of stolen 
 base attempts which are successful. (A stolen base attempt results either in a stolen base or being caught stealing.) 
