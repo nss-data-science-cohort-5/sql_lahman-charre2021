@@ -308,16 +308,237 @@ ORDER BY max_homeruns DESC;
 As you do this analysis, keep in mind that salaries across the whole league tend to increase together, so you may want to 
 look on a year-by-year basis. */
 
-/* 2. In this question, you will explore the connection between number of wins and attendance.
+--QUESTION 1 QUERY
+
+WITH total_salaries AS (
+	SELECT
+		yearid,
+		teamid,
+		SUM(salary) AS total_team_salary_that_year
+	FROM salaries
+	GROUP BY yearid, teamid
+),
+team_wins AS (
+	SELECT
+		yearid,
+		teamid,
+		w,
+		name
+	FROM teams
+	WHERE yearid >= 2000
+)
+
+SELECT
+	ts.yearid,
+	total_team_salary_that_year,
+	w,
+	tw.name
+FROM total_salaries AS ts
+INNER JOIN team_wins AS tw
+ON ts.yearid = tw.yearid
+AND ts.teamid = tw.teamid
+ORDER BY ts.yearid;
+
+/* 2. In this question, you will explore the connection between number of wins and attendance. */
 
 -- a. Does there appear to be any correlation between attendance at home games and number of wins?
 
+--QUESTION 2A QUERY
 
-/* b. Do teams that win the world series see a boost in attendance the following year? 
+WITH team_wins AS (
+	SELECT
+		yearid,
+		teamid,
+		w,
+		name
+	FROM teams
+),
+home_game_attendance AS (
+SELECT 
+	year,
+	team,
+	ROUND(SUM(attendance)/SUM(games)::numeric,2) AS attendance_per_home_game
+FROM homegames
+GROUP BY year, team
+HAVING SUM(attendance)/SUM(games)::numeric > 0
+ORDER BY year
+)
+SELECT
+	year,
+	name,
+	w,
+	attendance_per_home_game
+FROM team_wins AS tw
+INNER JOIN home_game_attendance AS hga
+ON tw.yearid = hga.year
+AND tw.teamid = hga.team;
+
+/* b. Do teams that win the world series see a boost in attendance the following year? */
+
+--QUESTION 2B1 QUERY
+
+WITH team_ws_win AS (
+	SELECT
+		yearid,
+		teamid,
+		CASE WHEN wswin = 'Y' THEN 'World Series Winner'
+		ELSE 'Not World Series Winner'
+		END AS ws_win,
+		name
+	FROM teams
+),
+home_game_attendance AS (
+	SELECT 
+		year,
+		team,
+		LEAD(ROUND(SUM(attendance)/SUM(games)::numeric,2), 1) 
+		OVER(PARTITION BY team ORDER BY year) - ROUND(SUM(attendance)/SUM(games)::numeric,2) AS attendance_boost
+	FROM homegames
+	GROUP BY year, team
+	HAVING SUM(attendance)/SUM(games)::numeric > 0
+	ORDER BY team
+)
+SELECT
+	year,
+	name,
+	ws_win,
+	attendance_boost
+FROM team_ws_win AS tw
+INNER JOIN home_game_attendance AS hga
+ON tw.yearid = hga.year
+AND tw.teamid = hga.team
+WHERE ws_win = 'World Series Winner'
+AND year <> 2016
+ORDER BY year;
+
+/*
 What about teams that made the playoffs? Making the playoffs means either being a division winner or a wild card winner. */
 
+--QUESTION 2B2 QUERY
+
+WITH team_playoffs AS (
+	SELECT
+		yearid,
+		teamid,
+		CASE WHEN divwin = 'Y' OR wcwin = 'Y' THEN 'Playoffs'
+		ELSE 'No Playoffs'
+		END AS playoffs,
+		name
+	FROM teams
+),
+home_game_attendance AS (
+	SELECT 
+		year,
+		team,
+		LEAD(ROUND(SUM(attendance)/SUM(games)::numeric,2), 1) 
+		OVER(PARTITION BY team ORDER BY year) - ROUND(SUM(attendance)/SUM(games)::numeric,2) AS attendance_boost
+	FROM homegames
+	GROUP BY year, team
+	HAVING SUM(attendance)/SUM(games)::numeric > 0
+	ORDER BY team
+)
+SELECT
+	year,
+	name,
+	playoffs,
+	attendance_boost
+FROM team_playoffs AS tp
+INNER JOIN home_game_attendance AS hga
+ON tp.yearid = hga.year
+AND tp.teamid = hga.team
+WHERE playoffs = 'Playoffs'
+AND year <> 2016
+ORDER BY year;
+
 /* 3. It is thought that since left-handed pitchers are more rare, causing batters to face them less often, 
-that they are more effective. Investigate this claim and present evidence to either support or dispute this claim. First, 
-determine just how rare left-handed pitchers are compared with right-handed pitchers. Are left-handed pitchers more likely 
-to win the Cy Young Award? Are they more likely to make it into the hall of fame? */
+that they are more effective. Investigate this claim and present evidence to either support or dispute this claim. */
+
+--May do additional work on this one.
+
+/* First, determine just how rare left-handed pitchers are compared with right-handed pitchers. */
+
+--QUESTION 3.1 QUERY (No other code needed)
+
+WITH lh_pitchers_only AS (
+	SELECT
+		DISTINCT playerid,
+		CASE WHEN throws = 'L' THEN 1
+		ELSE 0
+		END AS left_hand_throwers
+	FROM pitching
+	INNER JOIN people
+	USING (playerid)
+)
+
+SELECT TO_CHAR(ROUND(SUM(left_hand_throwers)/COUNT(*)::numeric * 100.0, 2),'fm00D00%')
+FROM lh_pitchers_only;
+--Only 26.63% of all pitchers are left-handed. So, not that rare.
+
+/* Are left-handed pitchers more likely to win the Cy Young Award? */ 
+
+--QUESTION 3.2 QUERY (No other code needed)
+
+WITH throws_cy AS (
+	SELECT 
+		CASE WHEN throws IS NULL THEN 'Total'
+		ELSE throws
+		END AS throws,
+		COUNT(throws) AS cy_by_hand
+	FROM
+		(
+			SELECT
+				DISTINCT playerid,
+				throws
+			FROM pitching
+			INNER JOIN people
+			USING (playerid)
+			WHERE playerid IN 
+				(
+					SELECT playerid
+					FROM awardsplayers
+					WHERE awardid = 'Cy Young Award'
+				)) AS sq
+	GROUP BY ROLLUP(throws)
+)
+
+SELECT
+	ROUND((SELECT cy_by_hand FROM throws_cy WHERE throws = 'R')/
+	(SELECT cy_by_hand FROM throws_cy WHERE throws = 'Total')::numeric,2) AS right_hand_perc,
+	ROUND((SELECT cy_by_hand FROM throws_cy WHERE throws = 'L')/
+	(SELECT cy_by_hand FROM throws_cy WHERE throws = 'Total')::numeric,2) AS left_hand_perc
+--Odds of left-handed pitchers winning the Cy Young Award are slightly higher than their proportion of pitchers at ~31%.
+
+/* Are they more likely to make it into the hall of fame? */
+
+--QUESTION 3.3 QUERY (No other code needed, for now)
+
+WITH throws_hof AS (
+	SELECT 
+		CASE WHEN throws IS NULL THEN 'Total'
+		ELSE throws
+		END AS throws,
+		COUNT(throws) AS hof_by_hand
+	FROM
+		(
+			SELECT
+				DISTINCT playerid,
+				throws
+			FROM pitching
+			INNER JOIN people
+			USING (playerid)
+			WHERE playerid IN 
+				(
+					SELECT playerid
+					FROM halloffame
+					WHERE inducted = 'Y'
+				)) AS sq
+	GROUP BY ROLLUP(throws)
+)
+
+SELECT
+	ROUND((SELECT hof_by_hand FROM throws_hof WHERE throws = 'R')/
+	(SELECT hof_by_hand FROM throws_hof WHERE throws = 'Total')::numeric,2) AS right_hand_perc,
+	ROUND((SELECT hof_by_hand FROM throws_hof WHERE throws = 'L')/
+	(SELECT hof_by_hand FROM throws_hof WHERE throws = 'Total')::numeric,2) AS left_hand_perc
+--Left-handed pitchers are less likely to be inducted into the Hall of Fame, at ~23%.
 
