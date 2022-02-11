@@ -845,22 +845,42 @@ WITH RECURSIVE wmays_connections AS (
 	ON next_iteration.player_who_played = cte_output.played_with
 	WHERE cte_output.degrees_of_separation < 2
 )
-SELECT route
-FROM wmays_connections
-WHERE route LIKE '%' || (SELECT playerid
-						 FROM people
-						 WHERE namefirst = 'Willie'
-						 AND namelast = 'Mays') || '%'
-AND route LIKE '%' || (SELECT playerid
-					   FROM people
-					   WHERE namefirst = 'Babe'
-					   AND namelast = 'Ruth') ||'%'
-LIMIT 1;
-/* "mayswi01 <<<< NLS195707090 <<<< willite01
-willite01 <<<< NLS194007090 <<<< medwijo01
-medwijo01 <<<< NLS193407100 <<<< ruthba01" */
-
---Need to replace with names.
+SELECT 
+	p1.namefirst || ' ' || p1.namelast AS first_player_name,
+	gameid,
+	p2.namefirst || ' ' || p2.namelast AS second_player_name
+FROM (
+SELECT
+	SPLIT_PART(separate_connections,' <<<< ', 1) AS first_player,
+	SPLIT_PART(separate_connections,' <<<< ', 2) AS gameid,
+	SPLIT_PART(separate_connections,' <<<< ', 3) AS second_player
+FROM
+	(
+	SELECT 
+		REGEXP_SPLIT_TO_TABLE(route, E'\n') AS separate_connections
+	FROM
+		(	
+		SELECT route
+		FROM wmays_connections
+		WHERE route LIKE '%' || (SELECT playerid
+								 FROM people
+								 WHERE namefirst = 'Willie'
+								 AND namelast = 'Mays') || '%'
+		AND route LIKE '%' || (SELECT playerid
+							   FROM people
+							   WHERE namefirst = 'Babe'
+							   AND namelast = 'Ruth') ||'%'
+		LIMIT 1
+		) AS sq1
+	) AS sq2
+) AS sq3
+INNER JOIN people AS p1
+ON first_player = p1.playerid
+INNER JOIN people AS p2
+ON second_player = p2.playerid;
+/* "Willie Mays"	"NLS195707090"	"Ted Williams"
+"Ted Williams"	"NLS194007090"	"Joe Medwick"
+"Joe Medwick"	"NLS193407100"	"Babe Ruth" */
 
 /* d. How large a chain do you need to connect Derek Jeter to Willie Mays? */
 
@@ -891,23 +911,45 @@ WITH RECURSIVE wmays_connections AS (
 	ON next_iteration.player_who_played = cte_output.played_with
 	WHERE cte_output.degrees_of_separation < 3
 )
-SELECT route
-FROM wmays_connections
-WHERE route LIKE '%' || (SELECT playerid
-						 FROM people
-						 WHERE namefirst = 'Willie'
-						 AND namelast = 'Mays') || '%'
-AND route LIKE '%' || (SELECT playerid
-					   FROM people
-					   WHERE namefirst = 'Derek'
-					   AND namelast = 'Jeter') ||'%'
-LIMIT 1;
-/* mayswi01 <<<< NLS197207250 <<<< jacksre01
-jacksre01 <<<< NLS198407100 <<<< strawda01
-strawda01 <<<< NLS198607150 <<<< clemero02
-clemero02 <<<< NLS200407130 <<<< jeterde01,
+SELECT 
+	p1.namefirst || ' ' || p1.namelast AS first_player_name,
+	gameid,
+	p2.namefirst || ' ' || p2.namelast AS second_player_name
+FROM (
+SELECT
+	SPLIT_PART(separate_connections,' <<<< ', 1) AS first_player,
+	SPLIT_PART(separate_connections,' <<<< ', 2) AS gameid,
+	SPLIT_PART(separate_connections,' <<<< ', 3) AS second_player
+FROM
+	(
+	SELECT 
+		REGEXP_SPLIT_TO_TABLE(route, E'\n') AS separate_connections
+	FROM
+		(	
+		SELECT route
+		FROM wmays_connections
+		WHERE route LIKE '%' || (SELECT playerid
+								 FROM people
+								 WHERE namefirst = 'Willie'
+								 AND namelast = 'Mays') || '%'
+		AND route LIKE '%' || (SELECT playerid
+							   FROM people
+							   WHERE namefirst = 'Derek'
+							   AND namelast = 'Jeter') ||'%'
+		LIMIT 1
+		) AS sq1
+	) AS sq2
+) AS sq3
+INNER JOIN people AS p1
+ON first_player = p1.playerid
+INNER JOIN people AS p2
+ON second_player = p2.playerid;
+/* "Willie Mays"	"NLS197207250"	"Reggie Jackson"
+"Reggie Jackson"	"NLS198407100"	"Darryl Strawberry"
+"Darryl Strawberry"	"NLS198607150"	"Roger Clemens"
+"Roger Clemens"	"NLS200407130"	"Derek Jeter",
 So, 4 degrees of separation */
 
---See if there's a way to do this programmatically.
+--See if there's a way to find the level at which Derek Jeter appears programmatically.
 
 
