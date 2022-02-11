@@ -741,28 +741,40 @@ https://data36.com/kevin-bacon-game-recursive-sql/.) */
 /* a. Willie Mays holds the record of the most All Star Game starts with 18. How many players started in an All Star Game 
 with Willie Mays? (A player started an All Star Game if they appear in the allstarfull table with a non-null startingpos value). */
 
-WITH RECURSIVE wmays_connections AS (
+/* DROP VIEW IF EXISTS hey_now_youre_an_allstar;
+CREATE VIEW player_names AS
 	SELECT 
-		playerid, 
-		gameid, 
-		0 AS degrees_of_separation
-	FROM allstarfull
-	WHERE startingpos IS NOT NULL
-	AND playerid = 'mayswi01'
-	UNION ALL
-	SELECT 
-		asf.playerid,
-		rc.gameid,
-		rc.degrees_of_separation + 1
-	FROM allstarfull AS asf
-	INNER JOIN wmays_connections AS rc
-	ON asf.gameid = rc.gameid
-	WHERE startingpos IS NOT NULL
-	AND rc.degrees_of_separation <= 1
-) 
-SELECT COUNT(DISTINCT playerid)
-FROM wmays_connections
-WHERE playerid <> 'mayswi01';
+		namefirst || ' ' || namelast AS full_name, 
+		gameid
+	FROM people
+	INNER JOIN allstarfull
+	USING (playerid)
+	WHERE startingpos IS NOT NULL; */
+
+DROP VIEW IF EXISTS hey_now_youre_an_allstar;
+CREATE VIEW hey_now_youre_an_allstar AS
+	SELECT
+		asf1.playerid AS player_who_played,
+		asf1.gameid AS which_game,
+		asf2.playerid AS played_with
+	FROM allstarfull AS asf1
+	INNER JOIN allstarfull AS asf2
+	USING(gameid)
+	WHERE asf1.playerid <> asf2.playerid
+	AND asf1.startingpos IS NOT NULL
+	AND asf2.startingpos IS NOT NULL;
+
+SELECT COUNT(DISTINCT played_with)
+FROM (
+SELECT 
+	player_who_played, 
+	which_game, 
+	played_with
+FROM hey_now_youre_an_allstar
+WHERE player_who_played = (SELECT playerid
+						  FROM people
+						  WHERE namefirst = 'Willie'
+						  AND namelast = 'Mays')) AS sq;
 --125
 
 /* b. How many players didn't start in an All Star Game with Willie Mays but started an All Star Game with another player 
@@ -771,33 +783,131 @@ but he did star the 1975 All Star Game with Blue Vida who started the 1971 All S
 
 WITH RECURSIVE wmays_connections AS (
 	SELECT 
-		playerid, 
-		gameid, 
+		player_who_played, 
+		which_game, 
+		played_with,
 		0 AS degrees_of_separation
-	FROM allstarfull
-	WHERE startingpos IS NOT NULL
-	AND playerid = 'mayswi01'
+	FROM hey_now_youre_an_allstar
+	WHERE player_who_played = (SELECT playerid
+							   FROM people
+							   WHERE namefirst = 'Willie'
+							   AND namelast = 'Mays')
 	UNION ALL
 	SELECT 
-		asf.playerid,
-		rc.gameid,
-		rc.degrees_of_separation + 1
-	FROM allstarfull AS asf
-	INNER JOIN wmays_connections AS rc
-	ON asf.gameid = rc.gameid
-	WHERE startingpos IS NOT NULL
-	AND rc.degrees_of_separation <= 5
+		next_iteration.player_who_played,
+		next_iteration.which_game,
+		next_iteration.played_with,
+		cte_output.degrees_of_separation + 1
+	FROM hey_now_youre_an_allstar AS next_iteration
+	INNER JOIN wmays_connections AS cte_output
+	ON next_iteration.player_who_played = cte_output.played_with
+	WHERE cte_output.degrees_of_separation < 1
 ) 
-SELECT COUNT(DISTINCT playerid)
+SELECT COUNT(DISTINCT played_with)
 FROM wmays_connections
-WHERE playerid <> 'mayswi01';
+WHERE degrees_of_separation = 1
+AND LOWER(played_with) NOT IN
+(
+	SELECT DISTINCT LOWER(played_with)
+	FROM wmays_connections
+	WHERE degrees_of_separation < 1
+);
+--218
 
 /* c. We'll call two players connected if they both started in the same All Star Game. Using this, we can find chains of players. 
 For example, one chain from Carlton Fisk to Willie Mays is as follows: Carlton Fisk started in the 1973 All Star Game with Rod Carew 
 who started in the 1972 All Star Game with Willie Mays. Find a chain of All Star starters connecting Babe Ruth to Willie Mays. */
 
+WITH RECURSIVE wmays_connections AS (
+	SELECT 
+		player_who_played, 
+		which_game, 
+		played_with,
+		player_who_played || ' <<<< ' || which_game || ' <<<< ' || played_with AS route,
+		0 AS degrees_of_separation
+	FROM hey_now_youre_an_allstar
+	WHERE player_who_played = (SELECT playerid
+							   FROM people
+							   WHERE namefirst = 'Willie'
+							   AND namelast = 'Mays')
+	UNION ALL
+	SELECT 
+		next_iteration.player_who_played,
+		next_iteration.which_game,
+		next_iteration.played_with,
+		cte_output.route ||E'\n'|| 
+	next_iteration.player_who_played || ' <<<< ' || 
+	next_iteration.which_game || ' <<<< ' || 
+	next_iteration.played_with AS route,
+		cte_output.degrees_of_separation + 1
+	FROM hey_now_youre_an_allstar AS next_iteration
+	INNER JOIN wmays_connections AS cte_output
+	ON next_iteration.player_who_played = cte_output.played_with
+	WHERE cte_output.degrees_of_separation < 2
+)
+SELECT route
+FROM wmays_connections
+WHERE route LIKE '%' || (SELECT playerid
+						 FROM people
+						 WHERE namefirst = 'Willie'
+						 AND namelast = 'Mays') || '%'
+AND route LIKE '%' || (SELECT playerid
+					   FROM people
+					   WHERE namefirst = 'Babe'
+					   AND namelast = 'Ruth') ||'%'
+LIMIT 1;
+/* "mayswi01 <<<< NLS195707090 <<<< willite01
+willite01 <<<< NLS194007090 <<<< medwijo01
+medwijo01 <<<< NLS193407100 <<<< ruthba01" */
+
+--Need to replace with names.
+
 /* d. How large a chain do you need to connect Derek Jeter to Willie Mays? */
 
+WITH RECURSIVE wmays_connections AS (
+	SELECT 
+		player_who_played, 
+		which_game, 
+		played_with,
+		player_who_played || ' <<<< ' || which_game || ' <<<< ' || played_with AS route,
+		0 AS degrees_of_separation
+	FROM hey_now_youre_an_allstar
+	WHERE player_who_played = (SELECT playerid
+							   FROM people
+							   WHERE namefirst = 'Willie'
+							   AND namelast = 'Mays')
+	UNION ALL
+	SELECT 
+		next_iteration.player_who_played,
+		next_iteration.which_game,
+		next_iteration.played_with,
+		cte_output.route ||E'\n'|| 
+	next_iteration.player_who_played || ' <<<< ' || 
+	next_iteration.which_game || ' <<<< ' || 
+	next_iteration.played_with AS route,
+		cte_output.degrees_of_separation + 1
+	FROM hey_now_youre_an_allstar AS next_iteration
+	INNER JOIN wmays_connections AS cte_output
+	ON next_iteration.player_who_played = cte_output.played_with
+	WHERE cte_output.degrees_of_separation < 3
+)
+SELECT route
+FROM wmays_connections
+WHERE route LIKE '%' || (SELECT playerid
+						 FROM people
+						 WHERE namefirst = 'Willie'
+						 AND namelast = 'Mays') || '%'
+AND route LIKE '%' || (SELECT playerid
+					   FROM people
+					   WHERE namefirst = 'Derek'
+					   AND namelast = 'Jeter') ||'%'
+LIMIT 1;
+/* mayswi01 <<<< NLS197207250 <<<< jacksre01
+jacksre01 <<<< NLS198407100 <<<< strawda01
+strawda01 <<<< NLS198607150 <<<< clemero02
+clemero02 <<<< NLS200407130 <<<< jeterde01,
+So, 4 degrees of separation */
 
+--See if there's a way to do this programmatically.
 
 
